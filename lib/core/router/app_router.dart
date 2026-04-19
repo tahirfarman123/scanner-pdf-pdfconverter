@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:pdf_scanner_app/features/converter/presentation/converter_screen.dart';
+import 'package:pdf_scanner_app/features/converter/presentation/converter_tool_screen.dart';
 import 'package:pdf_scanner_app/features/home/presentation/home_screen.dart';
 import 'package:pdf_scanner_app/features/pdf_reader/presentation/pdf_preview_screen.dart';
 import 'package:pdf_scanner_app/features/scanner/presentation/scanner_screen.dart';
@@ -14,6 +15,9 @@ class AppRoutes {
   static const converter = '/converter';
   static const preview = '/preview';
   static const settings = '/settings';
+
+  // New Tool Hub
+  static const tool = '/tool';
 
   const AppRoutes._();
 }
@@ -32,6 +36,13 @@ final appRouter = GoRouter(
         GoRoute(
           path: 'converter',
           builder: (context, state) => const ConverterScreen(),
+        ),
+        GoRoute(
+          path: 'tool',
+          builder: (context, state) {
+            final type = state.uri.queryParameters['type'] ?? 'unknown';
+            return ConverterToolScreen(toolType: type);
+          },
         ),
         GoRoute(
           path: 'preview',

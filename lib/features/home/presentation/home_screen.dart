@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:pdf_scanner_app/core/constants/app_strings.dart';
 import 'package:pdf_scanner_app/core/router/app_router.dart';
+import 'package:pdf_scanner_app/core/theme/app_colors.dart';
 import 'package:pdf_scanner_app/core/utils/date_formatters.dart';
 import 'package:pdf_scanner_app/models/scanned_document.dart';
 import 'package:pdf_scanner_app/providers/document_list_provider.dart';
@@ -16,78 +18,221 @@ class HomeScreen extends ConsumerWidget {
     final docsAsync = ref.watch(documentListProvider);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text(AppStrings.appName),
-        actions: [
-          IconButton(
-            onPressed: () => context.push('${AppRoutes.home}settings'),
-            icon: const Icon(Icons.settings_outlined),
-          ),
-        ],
+      body: SafeArea(
+        child: CustomScrollView(
+          slivers: [
+            _buildAppBar(context),
+            _buildHeader(context),
+            _buildQuickActions(context),
+            _buildRecentSectionHeader(context),
+            _buildDocumentsContent(context, docsAsync, ref),
+          ],
+        ),
       ),
-      body: docsAsync.when(
-        data: (docs) {
-          if (docs.isEmpty) {
-            return const _EmptyState();
-          }
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => context.push('${AppRoutes.home}scanner'),
+        child: const Icon(Icons.add_rounded, size: 30),
+      ),
+    );
+  }
 
-          return ListView.separated(
-            padding: const EdgeInsets.all(16),
-            itemCount: docs.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 12),
-            itemBuilder: (context, index) {
-              final doc = docs[index];
-              return Card(
-                child: ListTile(
-                  title: Text(doc.title),
-                  subtitle: Text(
-                    '${doc.pageCount} pages | ${DateFormatters.compact(doc.createdAt)}',
-                  ),
-                  onTap: () => context.push(
-                    '${AppRoutes.home}preview?path=${Uri.encodeComponent(doc.pdfPath)}',
-                  ),
-                  trailing: PopupMenuButton<_DocMenuAction>(
-                    onSelected: (action) => _handleAction(context, ref, doc, action),
-                    itemBuilder: (context) => const [
-                      PopupMenuItem(
-                        value: _DocMenuAction.share,
-                        child: Text('Share'),
-                      ),
-                      PopupMenuItem(
-                        value: _DocMenuAction.rename,
-                        child: Text('Rename'),
-                      ),
-                      PopupMenuItem(
-                        value: _DocMenuAction.delete,
-                        child: Text('Delete'),
-                      ),
-                    ],
-                  ),
+  Widget _buildAppBar(BuildContext context) {
+    return SliverPadding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      sliver: SliverToBoxAdapter(
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              AppStrings.appName,
+              style: GoogleFonts.outfit(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: AppColors.primaryLight,
+              ),
+            ),
+            IconButton(
+              onPressed: () => context.push('${AppRoutes.home}settings'),
+              icon: Icon(Icons.settings_outlined, color: Theme.of(context).colorScheme.onSurfaceVariant),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader(BuildContext context) {
+    return SliverPadding(
+      padding: const EdgeInsets.all(16),
+      sliver: SliverToBoxAdapter(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Hello, Ready to Scan?',
+              style: GoogleFonts.outfit(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Transform your paperwork into digital brilliance.',
+              style: GoogleFonts.outfit(
+                fontSize: 14,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQuickActions(BuildContext context) {
+    return SliverPadding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      sliver: SliverToBoxAdapter(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildSectionLabel(context, 'SMART TOOLS'),
+            const SizedBox(height: 12),
+            GridView.count(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisCount: 3,
+              mainAxisSpacing: 12,
+              crossAxisSpacing: 12,
+              childAspectRatio: 0.9,
+              children: [
+                _QuickActionTile(
+                  title: 'Scanner',
+                  icon: Icons.document_scanner_rounded,
+                  color: AppColors.primary,
+                  onTap: () => context.push('${AppRoutes.home}scanner'),
                 ),
-              );
-            },
+                _QuickActionTile(
+                  title: 'Img to PDF',
+                  icon: Icons.picture_as_pdf_rounded,
+                  color: AppColors.secondary,
+                  onTap: () => context.push('${AppRoutes.home}converter'),
+                ),
+                _QuickActionTile(
+                  title: 'Word to PDF',
+                  icon: Icons.description_rounded,
+                  color: const Color(0xFF2B579A),
+                  onTap: () => context.push('${AppRoutes.tool}?type=wordToPdf'),
+                ),
+                _QuickActionTile(
+                  title: 'Excel to PDF',
+                  icon: Icons.table_chart_rounded,
+                  color: const Color(0xFF217346),
+                  onTap: () => context.push('${AppRoutes.tool}?type=excelToPdf'),
+                ),
+                _QuickActionTile(
+                  title: 'PDF to Word',
+                  icon: Icons.history_edu_rounded,
+                  color: const Color(0xFFE4405F),
+                  onTap: () => context.push('${AppRoutes.tool}?type=pdfToWord'),
+                ),
+                _QuickActionTile(
+                  title: 'Excel to Word',
+                  icon: Icons.swap_horiz_rounded,
+                  color: const Color(0xFF217346),
+                  onTap: () => context.push('${AppRoutes.tool}?type=excelToWord'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionLabel(BuildContext context, String text) {
+    return Text(
+      text,
+      style: GoogleFonts.outfit(
+        fontSize: 12,
+        fontWeight: FontWeight.bold,
+        letterSpacing: 1.2,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
+    );
+  }
+
+  Widget _buildRecentSectionHeader(BuildContext context) {
+    return SliverPadding(
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+      sliver: SliverToBoxAdapter(
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Recent Documents',
+              style: GoogleFonts.outfit(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDocumentsContent(
+    BuildContext context,
+    AsyncValue<List<ScannedDocument>> docsAsync,
+    WidgetRef ref,
+  ) {
+    return docsAsync.when(
+      data: (docs) {
+        if (docs.isEmpty) {
+          return const SliverFillRemaining(
+            hasScrollBody: false,
+            child: _EmptyState(),
           );
-        },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stack) => Center(
+        }
+
+        return SliverPadding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, index) {
+                final doc = docs[index];
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _DocumentCard(
+                    doc: doc,
+                    onTap: () => context.push(
+                      '${AppRoutes.home}preview?path=${Uri.encodeComponent(doc.pdfPath)}',
+                    ),
+                    onAction: (action) => _handleAction(context, ref, doc, action),
+                  ),
+                );
+              },
+              childCount: docs.length,
+            ),
+          ),
+        );
+      },
+      loading: () => const SliverToBoxAdapter(
+        child: Center(
           child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Text('Could not load documents: $error'),
+            padding: EdgeInsets.all(32),
+            child: CircularProgressIndicator(),
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.push('${AppRoutes.home}scanner'),
-        label: const Text('Start Scan'),
-        icon: const Icon(Icons.document_scanner_outlined),
-      ),
-      bottomNavigationBar: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-          child: OutlinedButton.icon(
-            onPressed: () => context.push('${AppRoutes.home}converter'),
-            icon: const Icon(Icons.picture_as_pdf_outlined),
-            label: const Text('Image to PDF Converter'),
+      error: (error, stack) => SliverToBoxAdapter(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text('Could not load documents: $error'),
           ),
         ),
       ),
@@ -119,6 +264,7 @@ class HomeScreen extends ConsumerWidget {
       context: context,
       builder: (context) {
         return AlertDialog(
+          backgroundColor: AppColors.surface,
           title: const Text('Delete document?'),
           content: Text('"${doc.title}" will be removed from this device.'),
           actions: [
@@ -127,6 +273,7 @@ class HomeScreen extends ConsumerWidget {
               child: const Text('Cancel'),
             ),
             FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: AppColors.error),
               onPressed: () => Navigator.of(context).pop(true),
               child: const Text('Delete'),
             ),
@@ -147,6 +294,7 @@ class HomeScreen extends ConsumerWidget {
       context: context,
       builder: (context) {
         return AlertDialog(
+          backgroundColor: AppColors.surface,
           title: const Text('Rename document'),
           content: TextField(
             controller: controller,
@@ -169,6 +317,136 @@ class HomeScreen extends ConsumerWidget {
   }
 }
 
+class _QuickActionTile extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _QuickActionTile({
+    required this.title,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            color: color.withOpacity(0.12),
+            border: Border.all(color: color.withOpacity(0.2), width: 1),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: color, size: 24),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.outfit(
+                  color: Theme.of(context).colorScheme.onSurface,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DocumentCard extends StatelessWidget {
+  final ScannedDocument doc;
+  final VoidCallback onTap;
+  final Function(_DocMenuAction) onAction;
+
+  const _DocumentCard({
+    required this.doc,
+    required this.onTap,
+    required this.onAction,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: EdgeInsets.zero,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceLight,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.picture_as_pdf_outlined, color: AppColors.primaryLight),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      doc.title,
+                      style: GoogleFonts.outfit(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 16,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      '${doc.pageCount} pages | ${DateFormatters.compact(doc.createdAt)}',
+                      style: GoogleFonts.outfit(
+                        fontSize: 13,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              PopupMenuButton<_DocMenuAction>(
+                onSelected: onAction,
+                itemBuilder: (context) => const [
+                  PopupMenuItem(value: _DocMenuAction.share, child: Text('Share')),
+                  PopupMenuItem(value: _DocMenuAction.rename, child: Text('Rename')),
+                  PopupMenuItem(value: _DocMenuAction.delete, child: Text('Delete')),
+                ],
+                icon: const Icon(Icons.more_vert_rounded, color: AppColors.textSecondary),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 enum _DocMenuAction { share, rename, delete }
 
 class _EmptyState extends StatelessWidget {
@@ -181,17 +459,29 @@ class _EmptyState extends StatelessWidget {
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          children: const [
-            Icon(Icons.description_outlined, size: 56),
-            SizedBox(height: 16),
+          children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.description_outlined, size: 64, color: AppColors.primaryLight),
+            ),
+            const SizedBox(height: 24),
             Text(
               'No documents yet',
-              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18),
+              style: GoogleFonts.outfit(
+                fontWeight: FontWeight.bold,
+                fontSize: 22,
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
             ),
-            SizedBox(height: 8),
+            const SizedBox(height: 8),
             Text(
-              'Scan your first paper and convert it into a searchable, shareable PDF.',
+              'Scan your first paper and convert it into a premium, shareable PDF.',
               textAlign: TextAlign.center,
+              style: GoogleFonts.outfit(color: Theme.of(context).colorScheme.onSurfaceVariant),
             ),
           ],
         ),
@@ -199,3 +489,4 @@ class _EmptyState extends StatelessWidget {
     );
   }
 }
+
