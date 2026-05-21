@@ -33,6 +33,26 @@ class DocumentRepository {
     return file.path;
   }
 
+  Future<String> saveWord({required Uint8List bytes, required String suggestedName}) async {
+    final safeBase = _sanitizeFileName(suggestedName);
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final fileName = '${safeBase}_$timestamp.docx';
+    final file = await _storage.writeBytes(fileName: fileName, bytes: bytes);
+    return file.path;
+  }
+
+  Future<String> saveImage({
+    required Uint8List bytes,
+    required String suggestedName,
+    required String extension,
+  }) async {
+    final safeBase = _sanitizeFileName(suggestedName);
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final fileName = '${safeBase}_$timestamp.$extension';
+    final file = await _storage.writeBytes(fileName: fileName, bytes: bytes);
+    return file.path;
+  }
+
   Future<void> deleteDocumentFile(String path) async {
     if (path.isEmpty) {
       return;

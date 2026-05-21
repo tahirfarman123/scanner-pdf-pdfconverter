@@ -13,8 +13,11 @@ import 'package:pdf_scanner_app/core/theme/app_colors.dart';
 import 'package:pdf_scanner_app/providers/document_list_provider.dart';
 import 'package:pdf_scanner_app/providers/service_providers.dart';
 
+enum OutputFormat { pdf, word, jpg }
+
 class ConverterScreen extends ConsumerStatefulWidget {
-  const ConverterScreen({super.key});
+  final OutputFormat? initialFormat;
+  const ConverterScreen({super.key, this.initialFormat});
 
   @override
   ConsumerState<ConverterScreen> createState() => _ConverterScreenState();
@@ -24,12 +27,14 @@ class _ConverterScreenState extends ConsumerState<ConverterScreen> {
   final TextEditingController _titleController = TextEditingController();
   bool _busy = false;
   bool _grayscale = false;
+  late OutputFormat _selectedFormat;
   List<String> _imagePaths = const [];
 
   @override
   void initState() {
     super.initState();
     _titleController.text = 'Converted ${DateTime.now().millisecondsSinceEpoch}';
+    _selectedFormat = widget.initialFormat ?? OutputFormat.pdf;
   }
 
   @override
@@ -133,7 +138,7 @@ class _ConverterScreenState extends ConsumerState<ConverterScreen> {
     });
   }
 
-  Future<void> _generatePdf() async {
+  Future<void> _handleConversion() async {
     if (_imagePaths.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Pick images before converting.')),
@@ -142,12 +147,12 @@ class _ConverterScreenState extends ConsumerState<ConverterScreen> {
     }
 
     setState(() => _busy = true);
-    debugPrint('ConverterScreen: Generating PDF with ${_imagePaths.length} pages...');
+    debugPrint('ConverterScreen: Converting ${_imagePaths.length} pages to ${_selectedFormat.name.toUpperCase()}...');
 
     try {
       final imageService = ref.read(imageProcessingServiceProvider);
-      final pdfService = ref.read(pdfServiceProvider);
       final repository = ref.read(documentRepositoryProvider);
+      final title = _titleController.text.trim().isEmpty ? 'Converted' : _titleController.text.trim();
 
       final pages = <Uint8List>[];
       for (final path in _imagePaths) {
@@ -156,13 +161,42 @@ class _ConverterScreenState extends ConsumerState<ConverterScreen> {
         pages.add(prepared);
       }
 
-      final pdfBytes = await pdfService.imagesToPdf(pages);
-      final title = _titleController.text.trim().isEmpty ? 'Converted' : _titleController.text.trim();
-      final savedPath = await repository.savePdf(bytes: pdfBytes, suggestedName: title);
+      String savedPath = '';
+      
+      switch (_selectedFormat) {
+        case OutputFormat.pdf:
+          final pdfService = ref.read(pdfServiceProvider);
+          final pdfBytes = await pdfService.imagesToPdf(pages);
+          savedPath = await repository.savePdf(bytes: pdfBytes, suggestedName: title);
+          break;
+        case OutputFormat.word:
+          final wordService = ref.read(wordServiceProvider);
+          final wordBytes = await wordService.imagesToWord(pages);
+          savedPath = await repository.saveWord(bytes: wordBytes, suggestedName: title);
+          break;
+        case OutputFormat.jpg:
+          // For JPG, we'll save each page but only track the first one in the list for now
+          // or we could ZIP them, but let's keep it simple: save all, return first.
+          for (int i = 0; i < pages.length; i++) {
+            final path = await repository.saveImage(
+              bytes: pages[i], 
+              suggestedName: '${title}_Page_${i+1}', 
+              extension: 'jpg'
+            );
+            if (i == 0) savedPath = path;
+          }
+          break;
+      }
 
       await ref
           .read(documentListProvider.notifier)
-          .addDocument(title: title, pdfPath: savedPath, pageCount: _imagePaths.length);
+          .addDocument(
+            title: title, 
+            pdfPath: savedPath, // Note: pdfPath is used as generic file path in the model
+            pageCount: _imagePaths.length
+          );
+
+      if (!mounted) return;
 
       if (!mounted) return;
 
@@ -171,7 +205,7 @@ class _ConverterScreenState extends ConsumerState<ConverterScreen> {
       debugPrint('ConverterScreen: ERROR: $error');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('PDF conversion failed: $error')),
+        SnackBar(content: Text('Conversion failed: $error')),
       );
     } finally {
       if (mounted) {
@@ -219,6 +253,10 @@ class _ConverterScreenState extends ConsumerState<ConverterScreen> {
                 onChanged: _busy ? null : (value) => setState(() => _grayscale = value),
               ),
             ),
+            const SizedBox(height: 24),
+            _buildSectionLabel('OUTPUT FORMAT'),
+            const SizedBox(height: 12),
+            _buildFormatSelector(),
             const SizedBox(height: 24),
             _buildSectionLabel('MANAGE PAGES (${_imagePaths.length})'),
             const SizedBox(height: 12),
@@ -318,12 +356,81 @@ class _ConverterScreenState extends ConsumerState<ConverterScreen> {
     );
   }
 
+  Widget _buildFormatSelector() {
+    return Row(
+      children: [
+        _buildFormatOption(OutputFormat.pdf, Icons.picture_as_pdf_rounded, 'PDF'),
+        const SizedBox(width: 12),
+        _buildFormatOption(OutputFormat.word, Icons.description_rounded, 'Word'),
+        const SizedBox(width: 12),
+        _buildFormatOption(OutputFormat.jpg, Icons.image_rounded, 'JPG'),
+      ],
+    );
+  }
+
+  Widget _buildFormatOption(OutputFormat format, IconData icon, String label) {
+    final isSelected = _selectedFormat == format;
+    return Expanded(
+      child: InkWell(
+        onTap: _busy ? null : () => setState(() => _selectedFormat = format),
+        borderRadius: BorderRadius.circular(12),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: isSelected ? AppColors.primary : AppColors.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isSelected ? AppColors.primary : AppColors.surfaceLight,
+              width: 2,
+            ),
+          ),
+          child: Column(
+            children: [
+              Icon(
+                icon,
+                color: isSelected ? Colors.white : AppColors.surfaceLight,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: GoogleFonts.outfit(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: isSelected ? Colors.white : AppColors.surfaceLight,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildSubmitButton() {
+    IconData icon;
+    String label;
+
+    switch (_selectedFormat) {
+      case OutputFormat.pdf:
+        icon = Icons.picture_as_pdf_rounded;
+        label = 'CONVERT TO PDF';
+        break;
+      case OutputFormat.word:
+        icon = Icons.description_rounded;
+        label = 'CONVERT TO WORD';
+        break;
+      case OutputFormat.jpg:
+        icon = Icons.image_rounded;
+        label = 'SAVE AS JPG';
+        break;
+    }
+
     return SizedBox(
       width: double.infinity,
       height: 60,
       child: ElevatedButton.icon(
-        onPressed: _busy || _imagePaths.isEmpty ? null : _generatePdf,
+        onPressed: _busy || _imagePaths.isEmpty ? null : _handleConversion,
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.secondary,
         ),
@@ -332,9 +439,9 @@ class _ConverterScreenState extends ConsumerState<ConverterScreen> {
                 dimension: 20,
                 child: CircularProgressIndicator(strokeWidth: 3, color: Colors.white),
               )
-            : const Icon(Icons.picture_as_pdf_rounded),
+            : Icon(icon),
         label: Text(
-          _busy ? 'CONVERTING...' : 'CONVERT TO PDF',
+          _busy ? 'CONVERTING...' : label,
           style: GoogleFonts.outfit(letterSpacing: 1.1, fontWeight: FontWeight.bold),
         ),
       ),

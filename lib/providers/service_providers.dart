@@ -4,6 +4,8 @@ import 'package:pdf_scanner_app/services/scanner/scanner_service.dart';
 import 'package:pdf_scanner_app/services/storage/document_repository.dart';
 import 'package:pdf_scanner_app/services/storage/local_storage_service.dart';
 import 'package:pdf_scanner_app/services/image/image_processing_service.dart';
+import 'package:pdf_scanner_app/services/ocr/ocr_service.dart';
+import 'package:pdf_scanner_app/services/word/word_service.dart';
 
 final localStorageServiceProvider = Provider<LocalStorageService>((ref) {
   return LocalStorageService();
@@ -23,4 +25,12 @@ final imageProcessingServiceProvider = Provider<ImageProcessingService>((ref) {
 
 final scannerServiceProvider = Provider<ScannerService>((ref) {
   return const ScannerService();
+});
+
+final ocrServiceProvider = Provider<OcrService>((ref) {
+  return const OcrService();
+});
+
+final wordServiceProvider = Provider<WordService>((ref) {
+  return WordService();
 });

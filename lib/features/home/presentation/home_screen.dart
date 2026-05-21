@@ -103,45 +103,45 @@ class HomeScreen extends ConsumerWidget {
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               crossAxisCount: 3,
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
-              childAspectRatio: 0.9,
+              mainAxisSpacing: 16,
+              crossAxisSpacing: 16,
+              childAspectRatio: 0.85,
               children: [
                 _QuickActionTile(
-                  title: 'Scanner',
-                  icon: Icons.document_scanner_rounded,
-                  color: AppColors.primary,
-                  onTap: () => context.push('${AppRoutes.home}scanner'),
-                ),
-                _QuickActionTile(
-                  title: 'Img to PDF',
+                  title: 'Image to PDF',
                   icon: Icons.picture_as_pdf_rounded,
-                  color: AppColors.secondary,
-                  onTap: () => context.push('${AppRoutes.home}converter'),
+                  color: const Color(0xFFEF4444),
+                  onTap: () => context.push('${AppRoutes.home}scanner?format=pdf'),
                 ),
                 _QuickActionTile(
-                  title: 'Word to PDF',
+                  title: 'Text to PDF',
+                  icon: Icons.text_snippet_rounded,
+                  color: Colors.blueAccent,
+                  onTap: () => context.push('${AppRoutes.home}scanner?format=pdfText'),
+                ),
+                _QuickActionTile(
+                  title: 'Scan to Word',
                   icon: Icons.description_rounded,
                   color: const Color(0xFF2B579A),
-                  onTap: () => context.push('${AppRoutes.tool}?type=wordToPdf'),
+                  onTap: () => context.push('${AppRoutes.home}scanner?format=word'),
                 ),
                 _QuickActionTile(
-                  title: 'Excel to PDF',
-                  icon: Icons.table_chart_rounded,
-                  color: const Color(0xFF217346),
-                  onTap: () => context.push('${AppRoutes.tool}?type=excelToPdf'),
+                  title: 'Scan to Img',
+                  icon: Icons.image_rounded,
+                  color: const Color(0xFF10B981),
+                  onTap: () => context.push('${AppRoutes.home}scanner?format=jpg'),
                 ),
                 _QuickActionTile(
-                  title: 'PDF to Word',
-                  icon: Icons.history_edu_rounded,
-                  color: const Color(0xFFE4405F),
-                  onTap: () => context.push('${AppRoutes.tool}?type=pdfToWord'),
+                  title: 'Compress Img',
+                  icon: Icons.compress_rounded,
+                  color: Colors.orange,
+                  onTap: () => context.push('${AppRoutes.home}compress'),
                 ),
                 _QuickActionTile(
-                  title: 'Excel to Word',
-                  icon: Icons.swap_horiz_rounded,
-                  color: const Color(0xFF217346),
-                  onTap: () => context.push('${AppRoutes.tool}?type=excelToWord'),
+                  title: 'OCR Reader',
+                  icon: Icons.text_fields_rounded,
+                  color: Colors.deepPurple,
+                  onTap: () => context.push('${AppRoutes.home}ocr'),
                 ),
               ],
             ),
@@ -388,6 +388,8 @@ class _DocumentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isPdf = doc.pdfPath.toLowerCase().endsWith('.pdf');
+
     return Card(
       margin: EdgeInsets.zero,
       child: InkWell(
@@ -404,7 +406,10 @@ class _DocumentCard extends StatelessWidget {
                   color: AppColors.surfaceLight,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(Icons.picture_as_pdf_outlined, color: AppColors.primaryLight),
+                child: Icon(
+                  isPdf ? Icons.picture_as_pdf_outlined : Icons.image_outlined,
+                  color: AppColors.primaryLight,
+                ),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -421,7 +426,9 @@ class _DocumentCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                     Text(
-                      '${doc.pageCount} pages | ${DateFormatters.compact(doc.createdAt)}',
+                      isPdf
+                          ? '${doc.pageCount} pages | ${DateFormatters.compact(doc.createdAt)}'
+                          : 'Image Scan | ${DateFormatters.compact(doc.createdAt)}',
                       style: GoogleFonts.outfit(
                         fontSize: 13,
                         color: AppColors.textSecondary,

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/services.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,8 +15,11 @@ import 'package:pdf_scanner_app/core/theme/app_colors.dart';
 import 'package:pdf_scanner_app/providers/document_list_provider.dart';
 import 'package:pdf_scanner_app/providers/service_providers.dart';
 
+enum OutputFormat { pdf, pdfText, word, jpg, png }
+
 class ScannerScreen extends ConsumerStatefulWidget {
-  const ScannerScreen({super.key});
+  final OutputFormat? initialFormat;
+  const ScannerScreen({super.key, this.initialFormat});
 
   @override
   ConsumerState<ScannerScreen> createState() => _ScannerScreenState();
@@ -25,12 +29,14 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
   final TextEditingController _titleController = TextEditingController();
   bool _busy = false;
   bool _grayscale = true;
+  late OutputFormat _outputFormat;
   List<String> _imagePaths = const [];
 
   @override
   void initState() {
     super.initState();
     _titleController.text = 'Scan ${DateTime.now().millisecondsSinceEpoch}';
+    _outputFormat = widget.initialFormat ?? OutputFormat.pdf;
   }
 
   @override
@@ -122,7 +128,7 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
     });
   }
 
-  Future<void> _createPdf() async {
+  Future<void> _finalizeDocument() async {
     if (_imagePaths.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Select at least one page first.')),
@@ -131,28 +137,63 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
     }
 
     setState(() => _busy = true);
-    debugPrint('ScannerScreen: Starting PDF generation with ${_imagePaths.length} pages.');
+    debugPrint('ScannerScreen: Starting document generation in $_outputFormat format.');
 
     try {
       final imageService = ref.read(imageProcessingServiceProvider);
-      final pdfService = ref.read(pdfServiceProvider);
       final repository = ref.read(documentRepositoryProvider);
-
-      final pages = <Uint8List>[];
-      for (final path in _imagePaths) {
-        final raw = await File(path).readAsBytes();
-        final prepared = await imageService.preparePage(raw, grayscale: _grayscale);
-        pages.add(prepared);
-      }
-
-      final pdfBytes = await pdfService.imagesToPdf(pages);
       final title = _titleController.text.trim().isEmpty ? 'Scan' : _titleController.text.trim();
-      final savedPath = await repository.savePdf(bytes: pdfBytes, suggestedName: title);
+      String savedPath = '';
+
+      if (_outputFormat == OutputFormat.pdf) {
+        final pdfService = ref.read(pdfServiceProvider);
+        final pages = <Uint8List>[];
+        for (final path in _imagePaths) {
+          final raw = await File(path).readAsBytes();
+          final prepared = await imageService.preparePage(raw, grayscale: _grayscale);
+          pages.add(prepared);
+        }
+        final pdfBytes = await pdfService.imagesToPdf(pages);
+        savedPath = await repository.savePdf(bytes: pdfBytes, suggestedName: title);
+      } else if (_outputFormat == OutputFormat.pdfText) {
+        final pdfService = ref.read(pdfServiceProvider);
+        final ocrService = ref.read(ocrServiceProvider);
+
+        final buffer = StringBuffer();
+        for (final path in _imagePaths) {
+          final text = await ocrService.extractText(path);
+          buffer.writeln(text);
+          buffer.writeln('\n');
+        }
+
+        final pdfBytes = await pdfService.textToPdf(buffer.toString());
+        savedPath = await repository.savePdf(bytes: pdfBytes, suggestedName: title);
+      } else if (_outputFormat == OutputFormat.word) {
+        final wordService = ref.read(wordServiceProvider);
+        final pages = <Uint8List>[];
+        for (final path in _imagePaths) {
+          final raw = await File(path).readAsBytes();
+          final prepared = await imageService.preparePage(raw, grayscale: _grayscale);
+          pages.add(prepared);
+        }
+        final wordBytes = await wordService.imagesToWord(pages);
+        savedPath = await repository.saveWord(bytes: wordBytes, suggestedName: title);
+      } else {
+        // Save as Image (takes first page for simplicity in this version)
+        final formatStr = _outputFormat == OutputFormat.jpg ? 'jpg' : 'png';
+        final raw = await File(_imagePaths.first).readAsBytes();
+        final prepared = await imageService.preparePage(raw, grayscale: _grayscale, format: formatStr);
+        savedPath = await repository.saveImage(
+          bytes: prepared,
+          suggestedName: title,
+          extension: formatStr,
+        );
+      }
 
       await ref.read(documentListProvider.notifier).addDocument(
             title: title,
             pdfPath: savedPath,
-            pageCount: _imagePaths.length,
+            pageCount: (_outputFormat == OutputFormat.pdf || _outputFormat == OutputFormat.pdfText) ? _imagePaths.length : 1,
           );
 
       if (!mounted) return;
@@ -160,7 +201,7 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
       context.go('${AppRoutes.home}preview?path=${Uri.encodeComponent(savedPath)}');
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not create PDF: $error')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not create document: $error')));
     } finally {
       if (mounted) {
         setState(() => _busy = false);
@@ -209,6 +250,50 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
                   style: GoogleFonts.outfit(fontSize: 12),
                 ),
                 onChanged: _busy ? null : (value) => setState(() => _grayscale = value),
+              ),
+            ),
+            const SizedBox(height: 24),
+            _buildSectionLabel('OUTPUT FORMAT'),
+            const SizedBox(height: 12),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _FormatChip(
+                    label: 'Image PDF',
+                    icon: Icons.picture_as_pdf_rounded,
+                    selected: _outputFormat == OutputFormat.pdf,
+                    onTap: () => setState(() => _outputFormat = OutputFormat.pdf),
+                  ),
+                  const SizedBox(width: 8),
+                  _FormatChip(
+                    label: 'Text PDF',
+                    icon: Icons.text_snippet_rounded,
+                    selected: _outputFormat == OutputFormat.pdfText,
+                    onTap: () => setState(() => _outputFormat = OutputFormat.pdfText),
+                  ),
+                  const SizedBox(width: 8),
+                  _FormatChip(
+                    label: 'Word Doc',
+                    icon: Icons.description_rounded,
+                    selected: _outputFormat == OutputFormat.word,
+                    onTap: () => setState(() => _outputFormat = OutputFormat.word),
+                  ),
+                  const SizedBox(width: 8),
+                  _FormatChip(
+                    label: 'JPG Image',
+                    icon: Icons.image_rounded,
+                    selected: _outputFormat == OutputFormat.jpg,
+                    onTap: () => setState(() => _outputFormat = OutputFormat.jpg),
+                  ),
+                  const SizedBox(width: 8),
+                  _FormatChip(
+                    label: 'PNG Image',
+                    icon: Icons.camera_rounded,
+                    selected: _outputFormat == OutputFormat.png,
+                    onTap: () => setState(() => _outputFormat = OutputFormat.png),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 24),
@@ -293,6 +378,12 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
                       ),
                       const SizedBox(width: 4),
                       _ThumbnailAction(
+                        icon: Icons.text_fields_rounded,
+                        color: Colors.deepPurple,
+                        onTap: () => _runOcr(index),
+                      ),
+                      const SizedBox(width: 4),
+                      _ThumbnailAction(
                         icon: Icons.close_rounded,
                         color: AppColors.error,
                         onTap: () => _removeAt(index),
@@ -351,6 +442,50 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
     }
   }
 
+  Future<void> _runOcr(int index) async {
+    final path = _imagePaths[index];
+    setState(() => _busy = true);
+
+    try {
+      final ocrService = ref.read(ocrServiceProvider);
+      final text = await ocrService.extractText(path);
+
+      if (!mounted) return;
+
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Extracted Text'),
+          content: SingleChildScrollView(
+            child: SelectableText(text),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: text));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Copied to clipboard')),
+                );
+              },
+              child: const Text('Copy'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('OCR Error: $e')));
+    } finally {
+      if (mounted) {
+        setState(() => _busy = false);
+      }
+    }
+  }
+
   Widget _buildEmptyPreview() {
     return Container(
       width: double.infinity,
@@ -378,7 +513,7 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
       width: double.infinity,
       height: 60,
       child: ElevatedButton.icon(
-        onPressed: _busy || _imagePaths.isEmpty ? null : _createPdf,
+        onPressed: _busy || _imagePaths.isEmpty ? null : _finalizeDocument,
         style: ElevatedButton.styleFrom(
           backgroundColor: AppColors.primary,
         ),
@@ -389,7 +524,7 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
               )
             : const Icon(Icons.auto_fix_high_rounded),
         label: Text(
-          _busy ? 'ALCHEMIZING PDF...' : 'GENERATE PREMIUM PDF',
+          _busy ? 'ALCHEMIZING...' : 'GENERATE ${_outputFormat.name.toUpperCase()}',
           style: GoogleFonts.outfit(letterSpacing: 1.1, fontWeight: FontWeight.bold),
         ),
       ),
@@ -419,6 +554,59 @@ class _ThumbnailAction extends StatelessWidget {
           shape: BoxShape.circle,
         ),
         child: Icon(icon, color: Colors.white, size: 14),
+      ),
+    );
+  }
+}
+
+class _FormatChip extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _FormatChip({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: selected ? AppColors.primary : AppColors.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selected ? AppColors.primary : AppColors.surfaceLight,
+              width: 2,
+            ),
+          ),
+          child: Column(
+            children: [
+              Icon(
+                icon,
+                color: selected ? Colors.white : AppColors.surfaceLight,
+                size: 20,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: GoogleFonts.outfit(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: selected ? Colors.white : Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
